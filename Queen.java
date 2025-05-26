@@ -6,6 +6,8 @@ public class Queen extends ChessPiece {
     
     public Queen(boolean isWhite) {
         super(isWhite);
+        this.symbol = 'q';
+        loadImage();
     }
 
     @Override

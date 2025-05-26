@@ -8,7 +8,9 @@ public class Pawn extends ChessPiece {
 
     public Pawn(boolean isWhite) {
         super(isWhite);
+        this.symbol = 'p';
         hasMoved = false;
+        loadImage();
     }
 
     @Override

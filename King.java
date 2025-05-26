@@ -9,9 +9,11 @@ public class King extends ChessPiece {
 
     public King(boolean isWhite) {
         super(isWhite);
+        this.symbol = 'k';
         hasMoved = false;
         canCastleKingside = true;
         canCastleQueenside = true;
+        loadImage();
     }
 
     @Override

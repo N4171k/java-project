@@ -145,7 +145,7 @@ public class ChessBoard extends JPanel {
                 selectedPiece = null;
                 selectedSquare = null;
                 legalMoves.clear();
-                isWhiteTurn = !isWhiteTurn;
+                // Remove redundant isWhiteTurn toggle since it's handled in makeMove
                 // Only toggle AI turn if in Player vs AI mode
                 if (game != null && game.gameMode != null && game.gameMode.name().equals("PVAI")) {
                     isAITurn = !isAITurn;
@@ -515,5 +515,16 @@ public class ChessBoard extends JPanel {
             this.toRow = toRow;
             this.toCol = toCol;
         }
+    }
+
+    public ChessPiece getPieceAt(int row, int col) {
+        if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+            return board[row][col];
+        }
+        return null;
+    }
+
+    public boolean isWhiteTurn() {
+        return isWhiteTurn;
     }
 } 

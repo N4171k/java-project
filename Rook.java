@@ -7,7 +7,9 @@ public class Rook extends ChessPiece {
 
     public Rook(boolean isWhite) {
         super(isWhite);
+        this.symbol = 'r';
         hasMoved = false;
+        loadImage();
     }
 
     @Override

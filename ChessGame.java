@@ -21,6 +21,7 @@ class ChessGame extends JFrame {
     private Timer whiteTimer, blackTimer;
     private JLabel whiteTimeLabel, blackTimeLabel;
     private JLabel aiThinkingLabel;
+    private boolean isAITurn;
 
     public ChessGame() {
         setTitle("Chess Game");
@@ -114,7 +115,7 @@ class ChessGame extends JFrame {
             colorChoice.setEnabled(true);
             boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
             System.out.println("AI is playing as: " + (isWhiteAI ? "White" : "Black")); // Debug log
-            aiPlayer = new AIPlayer(aiLevelSlider.getValue(), isWhiteAI);
+            aiPlayer = new AIPlayer(board, isWhiteAI);
             board.setAITurn(isWhiteAI);
         }
     }
@@ -206,42 +207,21 @@ class ChessGame extends JFrame {
     }
 
     private void makeAIMove() {
-        aiThinkingLabel.setVisible(true);
-        try {
-            String aiMove = getAIMove();
-            System.out.println("AI Move: " + aiMove); // Debug log
-            
+        if (aiPlayer != null && isAITurn) {
+            String aiMove = aiPlayer.getNextMove();
             if (aiMove != null) {
-                try {
-                    board.executeAIMove(aiMove);
-                    System.out.println("AI move executed successfully: " + aiMove);
-                } catch (Exception e) {
-                    System.err.println("Failed to execute AI move: " + aiMove);
-                    System.err.println("Error: " + e.getMessage());
-                }
-            } else {
-                System.err.println("AI returned null move");
+                board.executeAIMove(aiMove);
+                isAITurn = false;
+                repaint();
             }
-        } catch (Exception e) {
-            System.err.println("Error in makeAIMove: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            aiThinkingLabel.setVisible(false);
         }
     }
 
-    private String getAIMove() {
-        if (aiPlayer == null) {
-            System.err.println("AI Player not initialized!");
-            return null;
+    private void initializeAI() {
+        if (aiPlayer != null) {
+            aiPlayer = null;
         }
-        try {
-            return aiPlayer.getNextMove(movesHistory);
-        } catch (Exception e) {
-            System.err.println("Error getting AI move: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }
+        aiPlayer = new AIPlayer(board, isAITurn);
     }
 
     // Reset the board and move history for a new game
@@ -256,7 +236,7 @@ class ChessGame extends JFrame {
         if (gameMode == GameMode.PVAI) {
             boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
             System.out.println("Reinitializing AI as: " + (isWhiteAI ? "White" : "Black")); // Debug log
-            aiPlayer = new AIPlayer(aiLevelSlider.getValue(), isWhiteAI);
+            aiPlayer = new AIPlayer(board, isWhiteAI);
             board.setAITurn(isWhiteAI);
         }
         

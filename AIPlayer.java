@@ -3,245 +3,135 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.awt.Point;
+import java.io.IOException;
 
 public class AIPlayer {
-    private int difficultyLevel;
-    private boolean isWhite;
-    private Random random;
     private ChessBoard board;
-    private static final int MAX_DEPTH = 3;
+    private boolean isWhite;
+    private StockfishEngine engine;
+    private Random random;
+    private int difficulty;
 
-    public AIPlayer(int difficultyLevel, boolean isWhite) {
-        this.difficultyLevel = difficultyLevel;
+    public AIPlayer(ChessBoard board, boolean isWhite) {
+        this.board = board;
         this.isWhite = isWhite;
+        this.engine = new StockfishEngine();
         this.random = new Random();
-        this.board = new ChessBoard(null); // Create a temporary board for move validation
+        this.difficulty = 3; // Default difficulty level
     }
 
-    public String getNextMove(List<String> movesHistory) {
+    public String getNextMove() {
         try {
-            // Update board with current position
-            updateBoard(movesHistory);
+            // Convert current board state to FEN
+            String fen = convertToFEN();
             
-            // Get all possible moves
-            List<Move> possibleMoves = getAllPossibleMoves();
-            if (possibleMoves.isEmpty()) {
-                System.err.println("No legal moves available");
-                return null;
+            // Get best move from engine
+            String bestMove = engine.getBestMove(fen, getMoveTime());
+            
+            if (bestMove != null) {
+                return bestMove;
             }
-
-            // Select move based on difficulty level
-            Move selectedMove;
-            if (difficultyLevel <= 3) {
-                // Random move for lower difficulties
-                selectedMove = possibleMoves.get(random.nextInt(possibleMoves.size()));
-            } else {
-                // Use minimax for higher difficulties
-                selectedMove = getBestMove(possibleMoves);
-            }
-
-            // Convert to our notation
-            return convertToNotation(selectedMove);
+            
+            // Fallback to random move if engine fails
+            return getRandomMove();
         } catch (Exception e) {
             System.err.println("Error getting AI move: " + e.getMessage());
-            e.printStackTrace();
-            return getDefaultMove();
+            return getRandomMove();
         }
     }
 
-    private void updateBoard(List<String> movesHistory) {
-        // Reset board
-        board = new ChessBoard(null);
+    private String convertToFEN() {
+        StringBuilder fen = new StringBuilder();
         
-        // Apply all moves from history
-        for (String move : movesHistory) {
-            try {
-                Point from = parseSquare(move.substring(0, 2));
-                Point to = parseSquare(move.substring(2, 4));
-                board.makeMove(from.y, from.x, to.y, to.x);
-            } catch (Exception e) {
-                System.err.println("Error applying move to board: " + move);
+        // Board position
+        for (int row = 0; row < 8; row++) {
+            int emptyCount = 0;
+            for (int col = 0; col < 8; col++) {
+                ChessPiece piece = board.getPieceAt(row, col);
+                if (piece == null) {
+                    emptyCount++;
+                } else {
+                    if (emptyCount > 0) {
+                        fen.append(emptyCount);
+                        emptyCount = 0;
+                    }
+                    char pieceChar = piece.getSymbol();
+                    fen.append(pieceChar);
+                }
+            }
+            if (emptyCount > 0) {
+                fen.append(emptyCount);
+            }
+            if (row < 7) {
+                fen.append('/');
             }
         }
+        
+        // Active color
+        fen.append(' ').append(board.isWhiteTurn() ? 'w' : 'b');
+        
+        // Castling availability
+        fen.append(" KQkq");
+        
+        // En passant target square
+        fen.append(" -");
+        
+        // Halfmove clock and fullmove number
+        fen.append(" 0 1");
+        
+        return fen.toString();
     }
 
-    private List<Move> getAllPossibleMoves() {
-        List<Move> moves = new ArrayList<>();
-        ChessPiece[][] boardState = board.getBoard();
-        
-        for (int row = 0; row < 8; row++) {
-            for (int col = 0; col < 8; col++) {
-                ChessPiece piece = boardState[row][col];
+    private String getRandomMove() {
+        // Get all legal moves
+        java.util.List<Point> legalMoves = new java.util.ArrayList<>();
+        for (int fromRow = 0; fromRow < 8; fromRow++) {
+            for (int fromCol = 0; fromCol < 8; fromCol++) {
+                ChessPiece piece = board.getPieceAt(fromRow, fromCol);
                 if (piece != null && piece.isWhite() == isWhite) {
-                    Set<Point> legalMoves = piece.getLegalMoves(boardState, row, col);
-                    for (Point move : legalMoves) {
-                        moves.add(new Move(new Point(col, row), move, piece));
+                    for (int toRow = 0; toRow < 8; toRow++) {
+                        for (int toCol = 0; toCol < 8; toCol++) {
+                            if (piece.isValidMove(fromRow, fromCol, toRow, toCol, board)) {
+                                legalMoves.add(new Point(fromCol, fromRow));
+                                legalMoves.add(new Point(toCol, toRow));
+                            }
+                        }
                     }
                 }
             }
         }
         
-        return moves;
-    }
-
-    private Move getBestMove(List<Move> moves) {
-        Move bestMove = null;
-        int bestScore = Integer.MIN_VALUE;
-        
-        for (Move move : moves) {
-            // Make the move
-            Point from = move.from;
-            Point to = move.to;
-            board.makeMove(from.y, from.x, to.y, to.x);
-            
-            // Evaluate position
-            int score = -minimax(MAX_DEPTH - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, false);
-            
-            // Undo the move
-            board.undoMove();
-            
-            // Update best move if this is better
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
+        if (legalMoves.isEmpty()) {
+            return null;
         }
         
-        return bestMove != null ? bestMove : moves.get(random.nextInt(moves.size()));
-    }
-
-    private int minimax(int depth, int alpha, int beta, boolean maximizingPlayer) {
-        if (depth == 0) {
-            return evaluatePosition();
-        }
-
-        List<Move> moves = getAllPossibleMoves();
-        if (moves.isEmpty()) {
-            return evaluatePosition();
-        }
-
-        if (maximizingPlayer) {
-            int maxEval = Integer.MIN_VALUE;
-            for (Move move : moves) {
-                Point from = move.from;
-                Point to = move.to;
-                board.makeMove(from.y, from.x, to.y, to.x);
-                int eval = minimax(depth - 1, alpha, beta, false);
-                board.undoMove();
-                maxEval = Math.max(maxEval, eval);
-                alpha = Math.max(alpha, eval);
-                if (beta <= alpha) {
-                    break;
-                }
-            }
-            return maxEval;
-        } else {
-            int minEval = Integer.MAX_VALUE;
-            for (Move move : moves) {
-                Point from = move.from;
-                Point to = move.to;
-                board.makeMove(from.y, from.x, to.y, to.x);
-                int eval = minimax(depth - 1, alpha, beta, true);
-                board.undoMove();
-                minEval = Math.min(minEval, eval);
-                beta = Math.min(beta, eval);
-                if (beta <= alpha) {
-                    break;
-                }
-            }
-            return minEval;
-        }
-    }
-
-    private int evaluatePosition() {
-        int score = 0;
-        ChessPiece[][] boardState = board.getBoard();
+        // Select random move
+        int moveIndex = random.nextInt(legalMoves.size() / 2) * 2;
+        Point from = legalMoves.get(moveIndex);
+        Point to = legalMoves.get(moveIndex + 1);
         
-        // Material evaluation
-        for (int row = 0; row < 8; row++) {
-            for (int col = 0; col < 8; col++) {
-                ChessPiece piece = boardState[row][col];
-                if (piece != null) {
-                    int value = getPieceValue(piece);
-                    score += piece.isWhite() == isWhite ? value : -value;
-                }
-            }
+        return convertToAlgebraicNotation(from, to);
+    }
+
+    private String convertToAlgebraicNotation(Point from, Point to) {
+        char fromFile = (char)('a' + from.x);
+        char fromRank = (char)('8' - from.y);
+        char toFile = (char)('a' + to.x);
+        char toRank = (char)('8' - to.y);
+        return "" + fromFile + fromRank + toFile + toRank;
+    }
+
+    private int getMoveTime() {
+        // Adjust thinking time based on difficulty
+        switch (difficulty) {
+            case 1: return 500;  // Easy
+            case 2: return 1000; // Medium
+            case 3: return 2000; // Hard
+            default: return 1000;
         }
-        
-        // Position evaluation
-        score += evaluatePosition(boardState);
-        
-        return score;
     }
 
-    private int getPieceValue(ChessPiece piece) {
-        if (piece instanceof Pawn) return 100;
-        if (piece instanceof Knight) return 320;
-        if (piece instanceof Bishop) return 330;
-        if (piece instanceof Rook) return 500;
-        if (piece instanceof Queen) return 900;
-        if (piece instanceof King) return 20000;
-        return 0;
-    }
-
-    private int evaluatePosition(ChessPiece[][] boardState) {
-        int score = 0;
-        
-        // Center control bonus
-        for (int row = 3; row <= 4; row++) {
-            for (int col = 3; col <= 4; col++) {
-                ChessPiece piece = boardState[row][col];
-                if (piece != null) {
-                    score += piece.isWhite() == isWhite ? 10 : -10;
-                }
-            }
-        }
-        
-        // Development bonus
-        for (int col = 0; col < 8; col++) {
-            ChessPiece piece = boardState[isWhite ? 1 : 6][col];
-            if (piece == null) {
-                score += isWhite ? 5 : -5;
-            }
-        }
-        
-        return score;
-    }
-
-    private Point parseSquare(String square) {
-        int col = square.charAt(0) - 'a';
-        int row = 8 - (square.charAt(1) - '0');
-        return new Point(col, row);
-    }
-
-    private String convertToNotation(Move move) {
-        Point from = move.from;
-        Point to = move.to;
-        return String.format("%c%d%c%d", 
-            'a' + from.x, 8 - from.y,
-            'a' + to.x, 8 - to.y);
-    }
-
-    private String getDefaultMove() {
-        return isWhite ? "e2e4" : "e7e5";
-    }
-
-    public void setDifficultyLevel(int level) {
-        if (level < 1 || level > 10) {
-            throw new IllegalArgumentException("Difficulty level must be between 1 and 10");
-        }
-        this.difficultyLevel = level;
-    }
-
-    private static class Move {
-        Point from;
-        Point to;
-        ChessPiece piece;
-
-        Move(Point from, Point to, ChessPiece piece) {
-            this.from = from;
-            this.to = to;
-            this.piece = piece;
-        }
+    public void setDifficulty(int difficulty) {
+        this.difficulty = Math.max(1, Math.min(3, difficulty));
     }
 }

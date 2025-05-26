@@ -4,6 +4,7 @@ import java.util.*;
 public abstract class ChessPiece {
     protected boolean isWhite;
     protected Image pieceImage;
+    protected char symbol;
 
     public ChessPiece(boolean isWhite) {
         this.isWhite = isWhite;
@@ -34,5 +35,14 @@ public abstract class ChessPiece {
 
     protected boolean isSameColorPiece(ChessPiece piece) {
         return piece != null && piece.isWhite() == this.isWhite;
+    }
+
+    public char getSymbol() {
+        return symbol;
+    }
+
+    public boolean isValidMove(int fromRow, int fromCol, int toRow, int toCol, ChessBoard board) {
+        Set<Point> legalMoves = getLegalMoves(board.getBoard(), fromRow, fromCol);
+        return legalMoves.contains(new Point(toCol, toRow));
     }
 } 
