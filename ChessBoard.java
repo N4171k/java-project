@@ -16,12 +16,14 @@ public class ChessBoard extends JPanel {
     private JTextArea moveHistoryArea;
     private int moveNumber;
     private Color[][] squareColors;
+    private Stack<MoveState> moveHistory;
 
     public ChessBoard(ChessGame game) {
         this.game = game;
         setPreferredSize(new Dimension(BOARD_SIZE * SQUARE_SIZE, BOARD_SIZE * SQUARE_SIZE));
         board = new ChessPiece[BOARD_SIZE][BOARD_SIZE];
         squareColors = new Color[BOARD_SIZE][BOARD_SIZE];
+        moveHistory = new Stack<>();
         initializeBoard();
         addMouseListener(new ChessMouseListener());
         moveNumber = 1;
@@ -144,7 +146,10 @@ public class ChessBoard extends JPanel {
                 selectedSquare = null;
                 legalMoves.clear();
                 isWhiteTurn = !isWhiteTurn;
-                isAITurn = !isAITurn; // Toggle AI turn
+                // Only toggle AI turn if in Player vs AI mode
+                if (game != null && game.gameMode != null && game.gameMode.name().equals("PVAI")) {
+                    isAITurn = !isAITurn;
+                }
                 repaint();
             } else if (clickedPiece != null && clickedPiece.isWhite() == isWhiteTurn) {
                 selectedPiece = clickedPiece;
@@ -199,8 +204,21 @@ public class ChessBoard extends JPanel {
     }
 
     private void makeMove(Point from, Point to) {
+        // Save the current state for undo
+        MoveState state = new MoveState(
+            board[from.y][from.x],
+            board[to.y][to.x],
+            from,
+            to,
+            isWhiteTurn,
+            Pawn.getLastDoubleMovePawn()
+        );
+        moveHistory.push(state);
+
         String moveNotation = convertToAlgebraicNotation(from, to);
-        game.addMoveToHistory(moveNotation);
+        if (game != null) {
+            game.addMoveToHistory(moveNotation);
+        }
         
         // Handle en passant
         if (board[from.y][from.x] instanceof Pawn && Math.abs(to.x - from.x) == 1 && board[to.y][to.x] == null) {
@@ -248,15 +266,18 @@ public class ChessBoard extends JPanel {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 ChessPiece piece = board[row][col];
                 if (piece instanceof King) {
-                    King king = (King) piece;
-                    if (king.isInCheck(board, row, col)) {
-                        highlightSquare(row, col, Color.RED);
+                    boolean isInCheck = ((King)piece).isInCheck(board, row, col);
+                    if (isInCheck) {
+                        highlightSquare(row, col, new Color(255, 0, 0, 100)); // Red highlight for check
                     } else {
-                        highlightSquare(row, col, null);
+                        highlightSquare(row, col, null); // Clear highlight
                     }
                 }
             }
         }
+
+        isWhiteTurn = !isWhiteTurn;
+        repaint();
     }
 
     private String convertToAlgebraicNotation(Point from, Point to) {
@@ -334,41 +355,21 @@ public class ChessBoard extends JPanel {
         return isAITurn;
     }
 
+    public void makeMove(int fromRow, int fromCol, int toRow, int toCol) {
+        Point from = new Point(fromCol, fromRow);
+        Point to = new Point(toCol, toRow);
+        makeMove(from, to);
+    }
+
     public void makeMove(String move) {
-        // Parse algebraic notation and make the move
-        if (move.equals("O-O")) {
-            // Kingside castling
-            int row = isWhiteTurn ? 7 : 0;
-            Point kingFrom = new Point(4, row);
-            Point kingTo = new Point(6, row);
-            makeMove(kingFrom, kingTo);
-        } else if (move.equals("O-O-O")) {
-            // Queenside castling
-            int row = isWhiteTurn ? 7 : 0;
-            Point kingFrom = new Point(4, row);
-            Point kingTo = new Point(2, row);
-            makeMove(kingFrom, kingTo);
-        } else {
-            // Regular move
-            int toCol = move.charAt(move.length() - 2) - 'a';
-            int toRow = 8 - (move.charAt(move.length() - 1) - '0');
-            
-            // Find the piece that can make this move
-            for (int row = 0; row < BOARD_SIZE; row++) {
-                for (int col = 0; col < BOARD_SIZE; col++) {
-                    ChessPiece piece = board[row][col];
-                    if (piece != null && piece.isWhite() == isWhiteTurn) {
-                        Set<Point> moves = piece.getLegalMoves(board, row, col);
-                        if (moves.contains(new Point(toCol, toRow))) {
-                            makeMove(new Point(col, row), new Point(toCol, toRow));
-                            isWhiteTurn = !isWhiteTurn;
-                            isAITurn = !isAITurn; // Toggle AI turn
-                            return;
-                        }
-                    }
-                }
-            }
+        if (move.length() != 4) {
+            return;
         }
+        int fromCol = move.charAt(0) - 'a';
+        int fromRow = 8 - (move.charAt(1) - '0');
+        int toCol = move.charAt(2) - 'a';
+        int toRow = 8 - (move.charAt(3) - '0');
+        makeMove(fromRow, fromCol, toRow, toCol);
     }
 
     public void highlightSquare(int row, int col, Color color) {
@@ -381,6 +382,138 @@ public class ChessBoard extends JPanel {
     }
 
     public void setAITurn(boolean isAITurn) {
+        System.out.println("Setting AI turn to: " + isAITurn); // Debug log
         this.isAITurn = isAITurn;
+    }
+
+    public void undoMove() {
+        if (moveHistory.isEmpty()) {
+            return;
+        }
+
+        MoveState state = moveHistory.pop();
+        
+        // Restore the board state
+        board[state.from.y][state.from.x] = state.movedPiece;
+        board[state.to.y][state.to.x] = state.capturedPiece;
+        
+        // Restore piece states
+        if (state.movedPiece instanceof Pawn) {
+            ((Pawn)state.movedPiece).resetHasMoved();
+        } else if (state.movedPiece instanceof King) {
+            ((King)state.movedPiece).resetHasMoved();
+        } else if (state.movedPiece instanceof Rook) {
+            ((Rook)state.movedPiece).resetHasMoved();
+        }
+        
+        // Restore en passant state
+        Pawn.setLastDoubleMovePawn(state.lastDoubleMovePawn);
+        
+        // Restore turn
+        isWhiteTurn = state.isWhiteTurn;
+        
+        repaint();
+    }
+
+    // --- Robust AI Move Execution and Helpers ---
+    public void executeAIMove(String moveNotation) {
+        try {
+            Move move = parseAlgebraicNotation(moveNotation);
+            if (move != null && isLegalMove(move)) {
+                makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                isWhiteTurn = !isWhiteTurn;
+                repaint();
+            } else {
+                System.err.println("AI move invalid: " + moveNotation + ". Falling back to random move.");
+                makeRandomMove();
+            }
+        } catch (Exception e) {
+            System.err.println("Exception during AI move: " + e.getMessage());
+            makeRandomMove();
+        }
+    }
+
+    private Move parseAlgebraicNotation(String moveNotation) {
+        moveNotation = moveNotation.trim();
+        if ("O-O".equals(moveNotation) || "0-0".equals(moveNotation)) {
+            int row = isWhiteTurn ? 7 : 0;
+            return new Move(row, 4, row, 6);
+        } else if ("O-O-O".equals(moveNotation) || "0-0-0".equals(moveNotation)) {
+            int row = isWhiteTurn ? 7 : 0;
+            return new Move(row, 4, row, 2);
+        }
+        if (moveNotation.length() == 4) {
+            int fromCol = moveNotation.charAt(0) - 'a';
+            int fromRow = 8 - (moveNotation.charAt(1) - '0');
+            int toCol = moveNotation.charAt(2) - 'a';
+            int toRow = 8 - (moveNotation.charAt(3) - '0');
+            return new Move(fromRow, fromCol, toRow, toCol);
+        }
+        return null;
+    }
+
+    public void makeRandomMove() {
+        java.util.List<Move> allMoves = getAllLegalMoves(isWhiteTurn);
+        if (!allMoves.isEmpty()) {
+            Move randomMove = allMoves.get((int)(Math.random() * allMoves.size()));
+            makeMove(randomMove.fromRow, randomMove.fromCol, randomMove.toRow, randomMove.toCol);
+            isWhiteTurn = !isWhiteTurn;
+            repaint();
+        } else {
+            System.err.println("No legal moves available for random move!");
+        }
+    }
+
+    public java.util.List<Move> getAllLegalMoves(boolean forWhite) {
+        java.util.List<Move> moves = new java.util.ArrayList<>();
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                ChessPiece piece = board[row][col];
+                if (piece != null && piece.isWhite() == forWhite) {
+                    Set<Point> legalMoves = piece.getLegalMoves(board, row, col);
+                    for (Point move : legalMoves) {
+                        moves.add(new Move(row, col, move.y, move.x));
+                    }
+                }
+            }
+        }
+        return moves;
+    }
+
+    private boolean isLegalMove(Move move) {
+        ChessPiece piece = board[move.fromRow][move.fromCol];
+        if (piece == null || piece.isWhite() != isWhiteTurn) return false;
+        Set<Point> legalMoves = piece.getLegalMoves(board, move.fromRow, move.fromCol);
+        return legalMoves.contains(new Point(move.toCol, move.toRow));
+    }
+
+    private static class MoveState {
+        ChessPiece movedPiece;
+        ChessPiece capturedPiece;
+        Point from;
+        Point to;
+        boolean isWhiteTurn;
+        Point lastDoubleMovePawn;
+
+        MoveState(ChessPiece movedPiece, ChessPiece capturedPiece, Point from, Point to, 
+                 boolean isWhiteTurn, Point lastDoubleMovePawn) {
+            this.movedPiece = movedPiece;
+            this.capturedPiece = capturedPiece;
+            this.from = from;
+            this.to = to;
+            this.isWhiteTurn = isWhiteTurn;
+            this.lastDoubleMovePawn = lastDoubleMovePawn;
+        }
+    }
+
+    private static class Move {
+        int fromRow, fromCol, toRow, toCol;
+        
+        Move(int fromRow, int fromCol, int toRow, int toCol) {
+            this.fromRow = fromRow;
+            this.fromCol = fromCol;
+            this.toRow = toRow;
+            this.toCol = toCol;
+        }
     }
 } 

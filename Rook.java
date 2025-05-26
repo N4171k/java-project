@@ -62,4 +62,8 @@ public class Rook extends ChessPiece {
     public void setHasMoved() {
         hasMoved = true;
     }
+
+    public void resetHasMoved() {
+        hasMoved = false;
+    }
 } 

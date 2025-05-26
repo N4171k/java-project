@@ -3,10 +3,10 @@ import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 
-public class ChessGame extends JFrame {
+class ChessGame extends JFrame {
     private static final int BOARD_SIZE = 8;
     private ChessBoard board;
-    private GameMode gameMode;
+    GameMode gameMode;
     private AIPlayer aiPlayer;
     private boolean isGameTimed;
     private int timeLimit; // in minutes
@@ -101,19 +101,21 @@ public class ChessGame extends JFrame {
     }
 
     private void handleGameModeChange(String mode) {
+        System.out.println("Changing game mode to: " + mode); // Debug log
         if (mode.equals("Player vs Player")) {
             gameMode = GameMode.PVP;
             aiLevelSlider.setEnabled(false);
             colorChoice.setEnabled(false);
             aiPlayer = null;
+            board.setAITurn(false);
         } else {
             gameMode = GameMode.PVAI;
             aiLevelSlider.setEnabled(true);
             colorChoice.setEnabled(true);
-            // Initialize AI player when switching to Player vs AI mode
             boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
+            System.out.println("AI is playing as: " + (isWhiteAI ? "White" : "Black")); // Debug log
             aiPlayer = new AIPlayer(aiLevelSlider.getValue(), isWhiteAI);
-            board.setAITurn(isWhiteAI); // Set initial AI turn
+            board.setAITurn(isWhiteAI);
         }
     }
 
@@ -207,36 +209,53 @@ public class ChessGame extends JFrame {
         aiThinkingLabel.setVisible(true);
         try {
             String aiMove = getAIMove();
+            System.out.println("AI Move: " + aiMove); // Debug log
+            
             if (aiMove != null) {
-                SwingUtilities.invokeLater(() -> {
-                    board.makeMove(aiMove);
-                    aiThinkingLabel.setVisible(false);
-                });
+                try {
+                    board.executeAIMove(aiMove);
+                    System.out.println("AI move executed successfully: " + aiMove);
+                } catch (Exception e) {
+                    System.err.println("Failed to execute AI move: " + aiMove);
+                    System.err.println("Error: " + e.getMessage());
+                }
+            } else {
+                System.err.println("AI returned null move");
             }
         } catch (Exception e) {
+            System.err.println("Error in makeAIMove: " + e.getMessage());
             e.printStackTrace();
+        } finally {
             aiThinkingLabel.setVisible(false);
         }
     }
 
     private String getAIMove() {
         if (aiPlayer == null) {
-            boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
-            aiPlayer = new AIPlayer(aiLevelSlider.getValue(), isWhiteAI);
+            System.err.println("AI Player not initialized!");
+            return null;
         }
-        return aiPlayer.getNextMove(movesHistory);
+        try {
+            return aiPlayer.getNextMove(movesHistory);
+        } catch (Exception e) {
+            System.err.println("Error getting AI move: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
 
     // Reset the board and move history for a new game
     private void resetGame() {
+        System.out.println("Resetting game..."); // Debug log
         remove(board);
-        initializeBoard();
+        board = new ChessBoard(this); // create a new board and assign it
+        add(board, BorderLayout.CENTER); // add the new board to the UI
         movesHistory.clear();
         updateMoveHistoryDisplay();
         
-        // Reset AI player if in AI mode
         if (gameMode == GameMode.PVAI) {
             boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
+            System.out.println("Reinitializing AI as: " + (isWhiteAI ? "White" : "Black")); // Debug log
             aiPlayer = new AIPlayer(aiLevelSlider.getValue(), isWhiteAI);
             board.setAITurn(isWhiteAI);
         }

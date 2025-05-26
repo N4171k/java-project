@@ -77,4 +77,12 @@ public class Pawn extends ChessPiece {
     public static void clearLastDoubleMovePawn() {
         lastDoubleMovePawn = null;
     }
+
+    public void resetHasMoved() {
+        hasMoved = false;
+    }
+
+    public static Point getLastDoubleMovePawn() {
+        return lastDoubleMovePawn;
+    }
 } 

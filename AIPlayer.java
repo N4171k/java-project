@@ -1,105 +1,229 @@
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.List;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import java.util.Random;
+import java.util.Set;
+import java.awt.Point;
 
 public class AIPlayer {
     private int difficultyLevel;
     private boolean isWhite;
-    private static final String API_KEY = "AIzaSyDuDNCV7iRJB4JYTiZEOEEM3gawkmqZl8U"; // Hardcoded API key
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-    private final HttpClient httpClient;
+    private Random random;
+    private ChessBoard board;
+    private static final int MAX_DEPTH = 3;
 
     public AIPlayer(int difficultyLevel, boolean isWhite) {
         this.difficultyLevel = difficultyLevel;
         this.isWhite = isWhite;
-        this.httpClient = HttpClient.newHttpClient();
+        this.random = new Random();
+        this.board = new ChessBoard(null); // Create a temporary board for move validation
     }
 
     public String getNextMove(List<String> movesHistory) {
         try {
-            String prompt = buildPrompt(movesHistory);
-            String response = makeApiCall(prompt);
-            return parseMoveFromResponse(response);
+            // Update board with current position
+            updateBoard(movesHistory);
+            
+            // Get all possible moves
+            List<Move> possibleMoves = getAllPossibleMoves();
+            if (possibleMoves.isEmpty()) {
+                System.err.println("No legal moves available");
+                return null;
+            }
+
+            // Select move based on difficulty level
+            Move selectedMove;
+            if (difficultyLevel <= 3) {
+                // Random move for lower difficulties
+                selectedMove = possibleMoves.get(random.nextInt(possibleMoves.size()));
+            } else {
+                // Use minimax for higher difficulties
+                selectedMove = getBestMove(possibleMoves);
+            }
+
+            // Convert to our notation
+            return convertToNotation(selectedMove);
         } catch (Exception e) {
             System.err.println("Error getting AI move: " + e.getMessage());
-            return "e2e4"; // Default move in case of error
+            e.printStackTrace();
+            return getDefaultMove();
         }
     }
 
-    private String makeApiCall(String prompt) throws Exception {
-        JSONObject requestBody = new JSONObject();
-        JSONObject content = new JSONObject();
-        JSONArray parts = new JSONArray();
-        JSONObject part = new JSONObject();
-        part.put("text", prompt);
-        parts.put(part);
-        content.put("parts", parts);
-        requestBody.put("contents", new JSONArray().put(content));
-
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(GEMINI_API_URL + "?key=" + API_KEY))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
-            .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() != 200) {
-            throw new RuntimeException("API call failed with status code: " + response.statusCode() + " and body: " + response.body());
+    private void updateBoard(List<String> movesHistory) {
+        // Reset board
+        board = new ChessBoard(null);
+        
+        // Apply all moves from history
+        for (String move : movesHistory) {
+            try {
+                Point from = parseSquare(move.substring(0, 2));
+                Point to = parseSquare(move.substring(2, 4));
+                board.makeMove(from.y, from.x, to.y, to.x);
+            } catch (Exception e) {
+                System.err.println("Error applying move to board: " + move);
+            }
         }
-
-        return response.body();
     }
 
-    private String parseMoveFromResponse(String response) {
-        try {
-            JSONObject jsonResponse = new JSONObject(response);
-            JSONArray candidates = jsonResponse.getJSONArray("candidates");
-            if (candidates.length() > 0) {
-                JSONObject candidate = candidates.getJSONObject(0);
-                JSONObject content = candidate.getJSONObject("content");
-                JSONArray parts = content.getJSONArray("parts");
-                if (parts.length() > 0) {
-                    String move = parts.getJSONObject(0).getString("text").trim();
-                    // Validate move format
-                    if (isValidMoveFormat(move)) {
-                        return move;
+    private List<Move> getAllPossibleMoves() {
+        List<Move> moves = new ArrayList<>();
+        ChessPiece[][] boardState = board.getBoard();
+        
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                ChessPiece piece = boardState[row][col];
+                if (piece != null && piece.isWhite() == isWhite) {
+                    Set<Point> legalMoves = piece.getLegalMoves(boardState, row, col);
+                    for (Point move : legalMoves) {
+                        moves.add(new Move(new Point(col, row), move, piece));
                     }
                 }
             }
-        } catch (Exception e) {
-            System.err.println("Error parsing API response: " + e.getMessage());
         }
-        return "e2e4"; // Default move if parsing fails
+        
+        return moves;
     }
 
-    private boolean isValidMoveFormat(String move) {
-        // Basic validation for common move formats
-        return move.matches("^[a-h][1-8][a-h][1-8]$") || // e2e4
-               move.matches("^[KQRBN][a-h][1-8]$") || // Nf3
-               move.matches("^O-O$") || // Kingside castle
-               move.matches("^O-O-O$"); // Queenside castle
+    private Move getBestMove(List<Move> moves) {
+        Move bestMove = null;
+        int bestScore = Integer.MIN_VALUE;
+        
+        for (Move move : moves) {
+            // Make the move
+            Point from = move.from;
+            Point to = move.to;
+            board.makeMove(from.y, from.x, to.y, to.x);
+            
+            // Evaluate position
+            int score = -minimax(MAX_DEPTH - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, false);
+            
+            // Undo the move
+            board.undoMove();
+            
+            // Update best move if this is better
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+        
+        return bestMove != null ? bestMove : moves.get(random.nextInt(moves.size()));
     }
 
-    private String buildPrompt(List<String> movesHistory) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("You are a chess AI playing at difficulty level ").append(difficultyLevel).append(".\n");
-        prompt.append("You are playing as ").append(isWhite ? "white" : "black").append(".\n");
-        prompt.append("The current game history is:\n");
-
-        for (int i = 0; i < movesHistory.size(); i++) {
-            prompt.append(i + 1).append(". ").append(movesHistory.get(i)).append("\n");
+    private int minimax(int depth, int alpha, int beta, boolean maximizingPlayer) {
+        if (depth == 0) {
+            return evaluatePosition();
         }
 
-        prompt.append("\nPlease provide your next move in algebraic notation (e.g., e2e4, Nf3, O-O).\n");
-        prompt.append("Consider the difficulty level when making your move - higher levels should play more strategically.\n");
-        prompt.append("Only respond with the move in algebraic notation, nothing else.");
+        List<Move> moves = getAllPossibleMoves();
+        if (moves.isEmpty()) {
+            return evaluatePosition();
+        }
 
-        return prompt.toString();
+        if (maximizingPlayer) {
+            int maxEval = Integer.MIN_VALUE;
+            for (Move move : moves) {
+                Point from = move.from;
+                Point to = move.to;
+                board.makeMove(from.y, from.x, to.y, to.x);
+                int eval = minimax(depth - 1, alpha, beta, false);
+                board.undoMove();
+                maxEval = Math.max(maxEval, eval);
+                alpha = Math.max(alpha, eval);
+                if (beta <= alpha) {
+                    break;
+                }
+            }
+            return maxEval;
+        } else {
+            int minEval = Integer.MAX_VALUE;
+            for (Move move : moves) {
+                Point from = move.from;
+                Point to = move.to;
+                board.makeMove(from.y, from.x, to.y, to.x);
+                int eval = minimax(depth - 1, alpha, beta, true);
+                board.undoMove();
+                minEval = Math.min(minEval, eval);
+                beta = Math.min(beta, eval);
+                if (beta <= alpha) {
+                    break;
+                }
+            }
+            return minEval;
+        }
+    }
+
+    private int evaluatePosition() {
+        int score = 0;
+        ChessPiece[][] boardState = board.getBoard();
+        
+        // Material evaluation
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                ChessPiece piece = boardState[row][col];
+                if (piece != null) {
+                    int value = getPieceValue(piece);
+                    score += piece.isWhite() == isWhite ? value : -value;
+                }
+            }
+        }
+        
+        // Position evaluation
+        score += evaluatePosition(boardState);
+        
+        return score;
+    }
+
+    private int getPieceValue(ChessPiece piece) {
+        if (piece instanceof Pawn) return 100;
+        if (piece instanceof Knight) return 320;
+        if (piece instanceof Bishop) return 330;
+        if (piece instanceof Rook) return 500;
+        if (piece instanceof Queen) return 900;
+        if (piece instanceof King) return 20000;
+        return 0;
+    }
+
+    private int evaluatePosition(ChessPiece[][] boardState) {
+        int score = 0;
+        
+        // Center control bonus
+        for (int row = 3; row <= 4; row++) {
+            for (int col = 3; col <= 4; col++) {
+                ChessPiece piece = boardState[row][col];
+                if (piece != null) {
+                    score += piece.isWhite() == isWhite ? 10 : -10;
+                }
+            }
+        }
+        
+        // Development bonus
+        for (int col = 0; col < 8; col++) {
+            ChessPiece piece = boardState[isWhite ? 1 : 6][col];
+            if (piece == null) {
+                score += isWhite ? 5 : -5;
+            }
+        }
+        
+        return score;
+    }
+
+    private Point parseSquare(String square) {
+        int col = square.charAt(0) - 'a';
+        int row = 8 - (square.charAt(1) - '0');
+        return new Point(col, row);
+    }
+
+    private String convertToNotation(Move move) {
+        Point from = move.from;
+        Point to = move.to;
+        return String.format("%c%d%c%d", 
+            'a' + from.x, 8 - from.y,
+            'a' + to.x, 8 - to.y);
+    }
+
+    private String getDefaultMove() {
+        return isWhite ? "e2e4" : "e7e5";
     }
 
     public void setDifficultyLevel(int level) {
@@ -107,5 +231,17 @@ public class AIPlayer {
             throw new IllegalArgumentException("Difficulty level must be between 1 and 10");
         }
         this.difficultyLevel = level;
+    }
+
+    private static class Move {
+        Point from;
+        Point to;
+        ChessPiece piece;
+
+        Move(Point from, Point to, ChessPiece piece) {
+            this.from = from;
+            this.to = to;
+            this.piece = piece;
+        }
     }
 }

@@ -156,4 +156,8 @@ public class King extends ChessPiece {
         canCastleKingside = false;
         canCastleQueenside = false;
     }
+
+    public void resetHasMoved() {
+        hasMoved = false;
+    }
 } 
