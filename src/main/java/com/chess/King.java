@@ -1,0 +1,171 @@
+package com.chess;
+
+import java.awt.*;
+import java.util.*;
+import javax.swing.ImageIcon;
+
+public class King extends ChessPiece {
+    private boolean hasMoved;
+    private boolean canCastleKingside;
+    private boolean canCastleQueenside;
+
+    public King(boolean isWhite) {
+        super(isWhite);
+        this.symbol = 'k';
+        hasMoved = false;
+        canCastleKingside = true;
+        canCastleQueenside = true;
+        loadImage();
+    }
+
+    @Override
+    protected void loadImage() {
+        String color = isWhite ? "w" : "b";
+        try {
+            pieceImage = new ImageIcon(getClass().getResource("/svg/" + color + "k.png")).getImage();
+        } catch (Exception e) {
+            pieceImage = null;
+        }
+    }
+
+    @Override
+    public Set<Point> getLegalMoves(ChessPiece[][] board, int row, int col) {
+        Set<Point> legalMoves = new HashSet<>();
+        
+        // Regular king moves (one square in any direction)
+        int[] rowOffsets = {-1, -1, -1, 0, 0, 1, 1, 1};
+        int[] colOffsets = {-1, 0, 1, -1, 1, -1, 0, 1};
+        
+        for (int i = 0; i < 8; i++) {
+            int newRow = row + rowOffsets[i];
+            int newCol = col + colOffsets[i];
+            
+            if (isValidPosition(newRow, newCol)) {
+                ChessPiece targetPiece = board[newRow][newCol];
+                if (targetPiece == null || isOpponentPiece(targetPiece)) {
+                    // Check if move puts king in check
+                    if (!wouldBeInCheck(board, row, col, newRow, newCol)) {
+                        legalMoves.add(new Point(newCol, newRow));
+                    }
+                }
+            }
+        }
+        
+        // Castling
+        if (!hasMoved && !isInCheck(board, row, col)) {
+            // Kingside castling
+            if (canCastleKingside && canCastleKingside(board, row, col)) {
+                legalMoves.add(new Point(col + 2, row));
+            }
+            
+            // Queenside castling
+            if (canCastleQueenside && canCastleQueenside(board, row, col)) {
+                legalMoves.add(new Point(col - 2, row));
+            }
+        }
+        
+        return legalMoves;
+    }
+
+    private boolean canCastleKingside(ChessPiece[][] board, int row, int col) {
+        // Check if path is clear
+        for (int i = col + 1; i < 7; i++) {
+            if (board[row][i] != null) {
+                return false;
+            }
+        }
+        
+        // Check if rook is present and hasn't moved
+        ChessPiece rook = board[row][7];
+        if (!(rook instanceof Rook) || ((Rook)rook).hasMoved()) {
+            return false;
+        }
+        
+        // Check if squares are not under attack
+        for (int i = col; i <= col + 2; i++) {
+            if (isSquareUnderAttack(board, row, i)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    private boolean canCastleQueenside(ChessPiece[][] board, int row, int col) {
+        // Check if path is clear
+        for (int i = col - 1; i > 0; i--) {
+            if (board[row][i] != null) {
+                return false;
+            }
+        }
+        
+        // Check if rook is present and hasn't moved
+        ChessPiece rook = board[row][0];
+        if (!(rook instanceof Rook) || ((Rook)rook).hasMoved()) {
+            return false;
+        }
+        
+        // Check if squares are not under attack
+        for (int i = col; i >= col - 2; i--) {
+            if (isSquareUnderAttack(board, row, i)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    private boolean wouldBeInCheck(ChessPiece[][] board, int fromRow, int fromCol, int toRow, int toCol) {
+        ChessPiece temp = board[toRow][toCol];
+        board[toRow][toCol] = board[fromRow][fromCol];
+        board[fromRow][fromCol] = null;
+        
+        boolean inCheck = isInCheck(board, toRow, toCol);
+        
+        board[fromRow][fromCol] = board[toRow][toCol];
+        board[toRow][toCol] = temp;
+        
+        return inCheck;
+    }
+
+    public boolean isInCheck(ChessPiece[][] board, int row, int col) {
+        return isSquareUnderAttack(board, row, col);
+    }
+
+    private boolean isSquareUnderAttack(ChessPiece[][] board, int row, int col) {
+        // Check all opponent pieces for attacks
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                ChessPiece piece = board[r][c];
+                if (piece != null && isOpponentPiece(piece)) {
+                    if (piece instanceof King) {
+                        // Manually check if the opponent king is adjacent
+                        if (Math.abs(r - row) <= 1 && Math.abs(c - col) <= 1) {
+                            return true;
+                        }
+                    } else {
+                        Set<Point> moves = piece.getLegalMoves(board, r, c);
+                        if (moves.contains(new Point(col, row))) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    public void setHasMoved() {
+        hasMoved = true;
+        canCastleKingside = false;
+        canCastleQueenside = false;
+    }
+
+    public void resetHasMoved() {
+        hasMoved = false;
+    }
+
+    public boolean hasMoved() {
+        return this.hasMoved;
+    }
+} 
