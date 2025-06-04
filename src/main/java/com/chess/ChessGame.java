@@ -4,36 +4,33 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
+import javax.swing.Timer;
+import javax.swing.plaf.synth.SynthLookAndFeel;
+import java.net.URL; // Import URL for resource loading
 
 public class ChessGame extends JFrame {
     private static final int BOARD_SIZE = 8;
     private ChessBoard board;
-    GameMode gameMode;
-    private AIPlayer aiPlayer;
-    private boolean isGameTimed;
-    private int timeLimit; // in minutes
     private ArrayList<String> movesHistory;
     private JPanel controlPanel;
-    private JSlider aiLevelSlider;
-    private JComboBox<String> colorChoice;
-    private JCheckBox timedGameCheckbox;
-    private JSpinner timeLimitSpinner;
     private JTextArea moveHistoryArea;
-    private static final int TIME_LIMIT = 10 * 60 * 1000; // 10 minutes in milliseconds
-    private Timer whiteTimer, blackTimer;
-    private JLabel whiteTimeLabel, blackTimeLabel;
-    private JLabel aiThinkingLabel;
-    private boolean isAITurn;
-    private static final int DEFAULT_AI_DIFFICULTY = 5;
-    private int aiDifficulty = DEFAULT_AI_DIFFICULTY;
     private Point selectedSquare;
 
     public ChessGame() {
         setTitle("Chess Game");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
+        
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
+            e.printStackTrace();
+        }
+
+        setLayout(new BorderLayout(10, 10)); // Add gaps between regions
+        ((JPanel) getContentPane()).setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Add padding to the content pane
         
         movesHistory = new ArrayList<>();
+        setupMenuBar();
         initializeControlPanel();
         initializeBoard();
         initializeMoveHistory();
@@ -43,136 +40,119 @@ public class ChessGame extends JFrame {
         startButton.addActionListener(e -> resetGame());
         controlPanel.add(startButton);
         
-        // Initialize timers
-        initializeTimers();
+        // Set a preferred size for the main frame
+        setPreferredSize(new Dimension(900, 600));
+
+        // Set application icon
+        try {
+            URL iconURL = getClass().getResource("/chess_icon.png");
+            if (iconURL != null) {
+                ImageIcon icon = new ImageIcon(iconURL);
+                setIconImage(icon.getImage());
+            } else {
+                System.err.println("Application icon not found: /chess_icon.png");
+            }
+        } catch (Exception e) {
+            System.err.println("Error loading application icon: " + e.getMessage());
+            e.printStackTrace();
+        }
         
         pack();
         setLocationRelativeTo(null);
     }
 
+    private void setupMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu gameMenu = new JMenu("Game");
+        JMenuItem newGameItem = new JMenuItem("New Game");
+        newGameItem.addActionListener(e -> resetGame());
+        gameMenu.add(newGameItem);
+        menuBar.add(gameMenu);
+        setJMenuBar(menuBar);
+    }
+
     private void initializeControlPanel() {
         controlPanel = new JPanel();
-        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
+        controlPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 10)); // Use FlowLayout for better button arrangement
+        controlPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "Controls")); // Add a nice border
         
-        // Game mode selection
-        String[] modes = {"Player vs Player", "Player vs AI"};
-        JComboBox<String> modeSelector = new JComboBox<>(modes);
-        modeSelector.addActionListener(e -> handleGameModeChange((String)modeSelector.getSelectedItem()));
+        // Add some empty space around the control panel to separate it from the board
+        JPanel controlPanelWrapper = new JPanel(new BorderLayout());
+        controlPanelWrapper.add(controlPanel, BorderLayout.NORTH);
+        controlPanelWrapper.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0)); // Padding on the left
         
-        // AI Level slider
-        aiLevelSlider = new JSlider(JSlider.HORIZONTAL, 1, 10, 5);
-        aiLevelSlider.setMajorTickSpacing(1);
-        aiLevelSlider.setPaintTicks(true);
-        aiLevelSlider.setPaintLabels(true);
-        
-        // Color choice
-        String[] colors = {"White", "Black"};
-        colorChoice = new JComboBox<>(colors);
-        
-        // Timed game options
-        timedGameCheckbox = new JCheckBox("Timed Game");
-        SpinnerNumberModel spinnerModel = new SpinnerNumberModel(10, 1, 60, 1);
-        timeLimitSpinner = new JSpinner(spinnerModel);
-        
-        controlPanel.add(new JLabel("Game Mode:"));
-        controlPanel.add(modeSelector);
-        controlPanel.add(new JLabel("AI Level:"));
-        controlPanel.add(aiLevelSlider);
-        controlPanel.add(new JLabel("Your Color:"));
-        controlPanel.add(colorChoice);
-        controlPanel.add(timedGameCheckbox);
-        controlPanel.add(new JLabel("Time Limit (minutes):"));
-        controlPanel.add(timeLimitSpinner);
-        
-        add(controlPanel, BorderLayout.EAST);
+        add(controlPanelWrapper, BorderLayout.EAST);
     }
 
     private void initializeMoveHistory() {
-        JPanel historyPanel = new JPanel(new BorderLayout());
-        historyPanel.setBorder(BorderFactory.createTitledBorder("Move History"));
+        JPanel historyPanel = new JPanel(new BorderLayout(5, 5)); // Add gaps
+        historyPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "Move History"));
         
-        moveHistoryArea = new JTextArea(20, 20);
+        moveHistoryArea = new JTextArea(20, 15); // Adjust size for better fit
         moveHistoryArea.setEditable(false);
         moveHistoryArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        moveHistoryArea.setBackground(new Color(240, 240, 240)); // Light background for readability
+        moveHistoryArea.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5)); // Padding inside text area
         
         JScrollPane scrollPane = new JScrollPane(moveHistoryArea);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         historyPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Add some empty space around the history panel
+        JPanel historyPanelWrapper = new JPanel(new BorderLayout());
+        historyPanelWrapper.add(historyPanel, BorderLayout.NORTH);
+        historyPanelWrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10)); // Padding on the right
         
-        add(historyPanel, BorderLayout.WEST);
+        add(historyPanelWrapper, BorderLayout.WEST);
     }
 
     private void initializeBoard() {
+        JPanel boardPanel = new JPanel(new BorderLayout());
+        boardPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20)); // Padding around the board
+
         board = new ChessBoard(this);
-        add(board, BorderLayout.CENTER);
+        boardPanel.add(board, BorderLayout.CENTER);
+        
+        // Add algebraic notation labels
+        JPanel fileLabels = new JPanel(new GridLayout(1, 8));
+        JPanel rankLabelsLeft = new JPanel(new GridLayout(8, 1));
+        JPanel rankLabelsRight = new JPanel(new GridLayout(8, 1));
+
+        // File labels (A-H)
+        for (char c = 'a'; c <= 'h'; c++) {
+            JLabel label = new JLabel(String.valueOf(c), SwingConstants.CENTER);
+            label.setFont(new Font("SansSerif", Font.BOLD, 12));
+            fileLabels.add(label);
+        }
+
+        // Rank labels (8-1)
+        for (int i = 8; i >= 1; i--) {
+            JLabel leftLabel = new JLabel(String.valueOf(i), SwingConstants.CENTER);
+            leftLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+            rankLabelsLeft.add(leftLabel);
+
+            JLabel rightLabel = new JLabel(String.valueOf(i), SwingConstants.CENTER);
+            rightLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+            rankLabelsRight.add(rightLabel);
+        }
+
+        boardPanel.add(fileLabels, BorderLayout.SOUTH);
+        boardPanel.add(rankLabelsLeft, BorderLayout.WEST);
+        boardPanel.add(rankLabelsRight, BorderLayout.EAST);
+
+        add(boardPanel, BorderLayout.CENTER);
     }
 
     private void handleGameModeChange(String mode) {
-        System.out.println("Changing game mode to: " + mode); // Debug log
-        if (mode.equals("Player vs Player")) {
-            gameMode = GameMode.PVP;
-            aiLevelSlider.setEnabled(false);
-            colorChoice.setEnabled(false);
-            aiPlayer = null;
-            board.setAITurn(false);
-        } else {
-            gameMode = GameMode.PVAI;
-            aiLevelSlider.setEnabled(true);
-            colorChoice.setEnabled(true);
-            boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
-            System.out.println("AI is playing as: " + (isWhiteAI ? "White" : "Black")); // Debug log
-            aiPlayer = new AIPlayer(board, isWhiteAI, aiDifficulty);
-            board.setAITurn(isWhiteAI);
-        }
+        System.out.println("Game mode changed, but only Player vs Player is supported.");
     }
 
     private void initializeTimers() {
-        whiteTimeLabel = new JLabel("White: 10:00");
-        blackTimeLabel = new JLabel("Black: 10:00");
-        
-        // Initialize AI thinking label with proper styling
-        aiThinkingLabel = new JLabel("AI is thinking...");
-        aiThinkingLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        aiThinkingLabel.setForeground(Color.RED);
-        aiThinkingLabel.setVisible(false);
-        
-        // Add labels to a panel for better organization
-        JPanel timerPanel = new JPanel();
-        timerPanel.setLayout(new BoxLayout(timerPanel, BoxLayout.Y_AXIS));
-        timerPanel.add(whiteTimeLabel);
-        timerPanel.add(blackTimeLabel);
-        timerPanel.add(aiThinkingLabel);
-        
-        controlPanel.add(timerPanel);
-        
-        whiteTimer = new Timer(1000, e -> updateTimer(whiteTimeLabel, whiteTimer));
-        blackTimer = new Timer(1000, e -> updateTimer(blackTimeLabel, blackTimer));
+        // Timers are no longer needed as the game is not timed.
     }
 
     private void updateTimer(JLabel label, Timer timer) {
-        String text = label.getText();
-        String[] parts = text.split(":");
-        if (parts.length < 2) return;
-        
-        String player = parts[0].trim();
-        String[] timeParts = parts[1].trim().split(":");
-        if (timeParts.length < 2) return;
-        
-        int minutes = Integer.parseInt(timeParts[0].trim());
-        int seconds = Integer.parseInt(timeParts[1].trim());
-        
-        if (seconds == 0) {
-            if (minutes == 0) {
-                timer.stop();
-                JOptionPane.showMessageDialog(this, player + " time's up!");
-                return;
-            }
-            minutes--;
-            seconds = 59;
-        } else {
-            seconds--;
-        }
-        
-        label.setText(String.format("%s: %02d:%02d", player, minutes, seconds));
+        // This method is no longer needed as the game is not timed.
     }
 
     private void checkForCheck() {
@@ -196,14 +176,6 @@ public class ChessGame extends JFrame {
     public void addMoveToHistory(String move) {
         movesHistory.add(move);
         updateMoveHistoryDisplay();
-        
-        // Check if it's AI's turn
-        if (gameMode == GameMode.PVAI && board.isAITurn()) {
-            // Start AI move in a separate thread to avoid freezing the UI
-            new Thread(() -> {
-                makeAIMove();
-            }).start();
-        }
     }
 
     private void updateMoveHistoryDisplay() {
@@ -220,57 +192,6 @@ public class ChessGame extends JFrame {
         moveHistoryArea.setCaretPosition(moveHistoryArea.getDocument().getLength());
     }
 
-    private void makeAIMove() {
-        System.out.println("makeAIMove called. isAITurn: " + isAITurn + ", aiPlayer: " + (aiPlayer != null));
-        if (aiPlayer != null && isAITurn) {
-            // Show loading indicator on EDT
-            SwingUtilities.invokeLater(() -> {
-                aiThinkingLabel.setVisible(true);
-                aiThinkingLabel.setText("AI is thinking...");
-                controlPanel.revalidate();
-                controlPanel.repaint();
-            });
-            
-            // Start AI move in a separate thread
-            new Thread(() -> {
-                try {
-                    String aiMove = aiPlayer.getNextMove();
-                    System.out.println("AI move received: " + aiMove);
-                    
-                    // Execute move on the EDT
-                    SwingUtilities.invokeLater(() -> {
-                        if (aiMove != null) {
-                            board.executeAIMove(aiMove);
-                            isAITurn = false;
-                            board.setAITurn(false);
-                            addMoveToHistory(aiMove);
-                        }
-                        // Hide loading indicator
-                        aiThinkingLabel.setVisible(false);
-                        controlPanel.revalidate();
-                        controlPanel.repaint();
-                    });
-                } catch (Exception e) {
-                    System.err.println("Error during AI move: " + e.getMessage());
-                    e.printStackTrace();
-                    // Hide loading indicator on error
-                    SwingUtilities.invokeLater(() -> {
-                        aiThinkingLabel.setVisible(false);
-                        controlPanel.revalidate();
-                        controlPanel.repaint();
-                    });
-                }
-            }).start();
-        }
-    }
-
-    private void initializeAI() {
-        if (aiPlayer != null) {
-            aiPlayer = null;
-        }
-        aiPlayer = new AIPlayer(board, isAITurn, aiDifficulty);
-    }
-
     // Reset the board and move history for a new game
     private void resetGame() {
         System.out.println("Resetting game..."); // Debug log
@@ -280,28 +201,8 @@ public class ChessGame extends JFrame {
         movesHistory.clear();
         updateMoveHistoryDisplay();
         
-        if (gameMode == GameMode.PVAI) {
-            boolean isWhiteAI = colorChoice.getSelectedItem().equals("Black");
-            System.out.println("Reinitializing AI as: " + (isWhiteAI ? "White" : "Black")); // Debug log
-            aiPlayer = new AIPlayer(board, isWhiteAI, aiDifficulty);
-            board.setAITurn(isWhiteAI);
-        }
-        
-        whiteTimer.restart();
-        blackTimer.restart();
         revalidate();
         repaint();
-    }
-
-    public void setAIDifficulty(int difficulty) {
-        this.aiDifficulty = Math.max(1, Math.min(10, difficulty));
-        if (aiPlayer != null) {
-            aiPlayer = new AIPlayer(board, !isAITurn, aiDifficulty);
-        }
-    }
-
-    public int getAIDifficulty() {
-        return aiDifficulty;
     }
 
     public static void main(String[] args) {
@@ -311,56 +212,22 @@ public class ChessGame extends JFrame {
     }
 
     private void handleSquareClick(int row, int col) {
-        if (gameMode == GameMode.PVP) {
-            // Player vs Player logic
-            if (selectedSquare == null) {
-                ChessPiece piece = board.getPieceAt(row, col);
-                if (piece != null && piece.isWhite() == board.isWhiteTurn()) {
-                    selectedSquare = new Point(col, row);
-                    updateBoard();
-                }
-            } else {
-                ChessPiece piece = board.getPieceAt(selectedSquare.y, selectedSquare.x);
-                if (piece != null && piece.isValidMove(selectedSquare.y, selectedSquare.x, row, col, board)) {
-                    board.makeMove(selectedSquare, new Point(col, row));
-                    selectedSquare = null;
-                    updateBoard();
-                } else {
-                    selectedSquare = null;
-                    updateBoard();
-                }
+        // Player vs Player logic
+        if (selectedSquare == null) {
+            ChessPiece piece = board.getPieceAt(row, col);
+            if (piece != null && piece.isWhite() == board.isWhiteTurn()) {
+                selectedSquare = new Point(col, row);
+                updateBoard();
             }
-        } else if (gameMode == GameMode.PVAI) {
-            // Player vs AI logic
-            if (isAITurn) {
-                System.out.println("AI's turn, ignoring player click");
-                return;
-            }
-            
-            // Player's turn
-            if (selectedSquare == null) {
-                ChessPiece piece = board.getPieceAt(row, col);
-                if (piece != null && piece.isWhite() == board.isWhiteTurn()) {
-                    selectedSquare = new Point(col, row);
-                    updateBoard();
-                }
+        } else {
+            ChessPiece piece = board.getPieceAt(selectedSquare.y, selectedSquare.x);
+            if (piece != null && piece.isValidMove(selectedSquare.y, selectedSquare.x, row, col, board)) {
+                board.makeMove(selectedSquare, new Point(col, row));
+                selectedSquare = null;
+                updateBoard();
             } else {
-                ChessPiece piece = board.getPieceAt(selectedSquare.y, selectedSquare.x);
-                if (piece != null && piece.isValidMove(selectedSquare.y, selectedSquare.x, row, col, board)) {
-                    String moveNotation = board.convertToAlgebraicNotation(selectedSquare, new Point(col, row));
-                    board.makeMove(selectedSquare, new Point(col, row));
-                    selectedSquare = null;
-                    updateBoard();
-                    
-                    // Set AI turn and trigger AI move
-                    isAITurn = true;
-                    board.setAITurn(true);
-                    System.out.println("Player move complete: " + moveNotation + ", triggering AI move");
-                    addMoveToHistory(moveNotation);
-                } else {
-                    selectedSquare = null;
-                    updateBoard();
-                }
+                selectedSquare = null;
+                updateBoard();
             }
         }
     }
@@ -372,6 +239,5 @@ public class ChessGame extends JFrame {
 }
 
 enum GameMode {
-    PVP,
-    PVAI
+    PVP
 } 

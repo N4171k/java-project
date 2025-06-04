@@ -22,6 +22,9 @@ public abstract class ChessPiece {
     public void draw(Graphics2D g2d, int x, int y, int size) {
         if (pieceImage != null) {
             g2d.drawImage(pieceImage, x, y, size, size, null);
+            System.out.println("Drawing piece: " + symbol + " at (" + x + "," + y + ")");
+        } else {
+            System.err.println("Cannot draw piece: " + symbol + " - pieceImage is null");
         }
     }
 

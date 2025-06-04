@@ -18,10 +18,20 @@ public class Pawn extends ChessPiece {
     @Override
     protected void loadImage() {
         String color = isWhite ? "w" : "b";
+        String imagePath = "/svg/" + color + "p.png";
+        System.out.println("Attempting to load image: " + imagePath);
         try {
-            pieceImage = new ImageIcon(getClass().getResource("/svg/" + color + "p.png")).getImage();
+            pieceImage = new ImageIcon(getClass().getResource(imagePath)).getImage();
+            if (pieceImage == null) {
+                System.err.println("Failed to load image for " + (isWhite ? "white" : "black") + " pawn: " + imagePath + " (getResource returned null)");
+            } else {
+                System.out.println("Successfully loaded image for " + (isWhite ? "white" : "black") + " pawn: " + imagePath);
+                int width = pieceImage.getWidth(null);
+                int height = pieceImage.getHeight(null);
+                System.out.println("Image dimensions for " + (isWhite ? "white" : "black") + " pawn: " + width + "x" + height);
+            }
         } catch (Exception e) {
-            // If image loading fails, we'll draw a simple representation
+            System.err.println("Error loading image for " + (isWhite ? "white" : "black") + " pawn: " + imagePath + " - " + e.getMessage());
             pieceImage = null;
         }
     }

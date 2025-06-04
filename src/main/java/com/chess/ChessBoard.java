@@ -4,15 +4,16 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.*;
+import javax.sound.sampled.*;
+import java.io.IOException;
+import java.net.URL;
 
 public class ChessBoard extends JPanel {
-    private static final int SQUARE_SIZE = 60;
     private static final int BOARD_SIZE = 8;
     private ChessPiece[][] board;
     private ChessPiece selectedPiece;
     private Point selectedSquare;
     private boolean isWhiteTurn;
-    private boolean isAITurn;
     private Set<Point> legalMoves;
     private ChessGame game;
     private JTextArea moveHistoryArea;
@@ -21,10 +22,10 @@ public class ChessBoard extends JPanel {
     private Stack<MoveState> moveHistory;
     private int halfmoveClock;
     private int fullmoveNumber;
+    private int squareSize;
 
     public ChessBoard(ChessGame game) {
         this.game = game;
-        setPreferredSize(new Dimension(BOARD_SIZE * SQUARE_SIZE, BOARD_SIZE * SQUARE_SIZE));
         board = new ChessPiece[BOARD_SIZE][BOARD_SIZE];
         squareColors = new Color[BOARD_SIZE][BOARD_SIZE];
         moveHistory = new Stack<>();
@@ -33,6 +34,32 @@ public class ChessBoard extends JPanel {
         initializeBoard();
         addMouseListener(new ChessMouseListener());
         moveNumber = 1;
+        setOpaque(true);
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                // Calculate new square size based on the smaller dimension to maintain square aspect ratio
+                squareSize = Math.min(getWidth(), getHeight()) / BOARD_SIZE;
+                repaint();
+            }
+        });
+    }
+
+    private void playSound(String soundFileName) {
+        try {
+            URL soundURL = getClass().getResource("/sounds/" + soundFileName.replace(".mp3", ".wav"));
+            if (soundURL == null) {
+                System.err.println("Sound file not found: /sounds/" + soundFileName.replace(".mp3", ".wav"));
+                return;
+            }
+            AudioInputStream audioStream = AudioSystem.getAudioInputStream(soundURL);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioStream);
+            clip.start();
+        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+            System.err.println("Error playing sound: " + soundFileName + " - " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void initializeBoard() {
@@ -72,12 +99,18 @@ public class ChessBoard extends JPanel {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
         
+        // Calculate current square size based on panel dimensions
+        squareSize = Math.min(getWidth(), getHeight()) / BOARD_SIZE;
+
+        g2d.setColor(Color.LIGHT_GRAY); // Add a background color to the board panel
+        g2d.fillRect(0, 0, getWidth(), getHeight());
+
         // Draw board
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 boolean isLight = (row + col) % 2 == 0;
                 g2d.setColor(isLight ? new Color(240, 217, 181) : new Color(181, 136, 99));
-                g2d.fillRect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
+                g2d.fillRect(col * squareSize, row * squareSize, squareSize, squareSize);
             }
         }
 
@@ -86,8 +119,8 @@ public class ChessBoard extends JPanel {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 if (squareColors[row][col] != null) {
                     g2d.setColor(squareColors[row][col]);
-                    g2d.fillRect(col * SQUARE_SIZE, row * SQUARE_SIZE, 
-                                SQUARE_SIZE, SQUARE_SIZE);
+                    g2d.fillRect(col * squareSize, row * squareSize, 
+                                squareSize, squareSize);
                 }
             }
         }
@@ -95,15 +128,15 @@ public class ChessBoard extends JPanel {
         // Highlight selected square
         if (selectedSquare != null) {
             g2d.setColor(new Color(130, 151, 105, 150));
-            g2d.fillRect(selectedSquare.x * SQUARE_SIZE, selectedSquare.y * SQUARE_SIZE, 
-                        SQUARE_SIZE, SQUARE_SIZE);
+            g2d.fillRect(selectedSquare.x * squareSize, selectedSquare.y * squareSize, 
+                        squareSize, squareSize);
         }
 
         // Highlight legal moves with light blue squares
         g2d.setColor(new Color(173, 216, 230, 150)); // Light blue with transparency
         for (Point move : legalMoves) {
-            g2d.fillRect(move.x * SQUARE_SIZE, move.y * SQUARE_SIZE,
-                        SQUARE_SIZE, SQUARE_SIZE);
+            g2d.fillRect(move.x * squareSize, move.y * squareSize,
+                        squareSize, squareSize);
         }
 
         // Draw pieces last so they appear on top
@@ -111,7 +144,7 @@ public class ChessBoard extends JPanel {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 ChessPiece piece = board[row][col];
                 if (piece != null) {
-                    piece.draw(g2d, col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE);
+                    piece.draw(g2d, col * squareSize, row * squareSize, squareSize);
                 }
             }
         }
@@ -120,8 +153,8 @@ public class ChessBoard extends JPanel {
     private class ChessMouseListener extends MouseAdapter {
         @Override
         public void mouseClicked(MouseEvent e) {
-            int col = e.getX() / SQUARE_SIZE;
-            int row = e.getY() / SQUARE_SIZE;
+            int col = e.getX() / squareSize;
+            int row = e.getY() / squareSize;
             
             if (col >= 0 && col < BOARD_SIZE && row >= 0 && row < BOARD_SIZE) {
                 handleSquareClick(row, col);
@@ -130,11 +163,6 @@ public class ChessBoard extends JPanel {
     }
 
     private void handleSquareClick(int row, int col) {
-        // Don't allow moves during AI's turn
-        if (isAITurn) {
-            return;
-        }
-
         ChessPiece clickedPiece = board[row][col];
         
         if (selectedPiece == null) {
@@ -151,11 +179,6 @@ public class ChessBoard extends JPanel {
                 selectedPiece = null;
                 selectedSquare = null;
                 legalMoves.clear();
-                // Remove redundant isWhiteTurn toggle since it's handled in makeMove
-                // Only toggle AI turn if in Player vs AI mode
-                if (game != null && game.gameMode != null && game.gameMode.name().equals("PVAI")) {
-                    isAITurn = !isAITurn;
-                }
                 repaint();
             } else if (clickedPiece != null && clickedPiece.isWhite() == isWhiteTurn) {
                 selectedPiece = clickedPiece;
@@ -253,12 +276,19 @@ public class ChessBoard extends JPanel {
             board[to.y][rookCol] = null;
             if (board[to.y][newRookCol] instanceof Rook) {
                 ((Rook)board[to.y][newRookCol]).setHasMoved();
+                playSound("castle.wav");
             }
         }
         
         // Move the piece
         board[to.y][to.x] = board[from.y][from.x];
         board[from.y][from.x] = null;
+        
+        if (state.capturedPiece != null) {
+            playSound("piece-capture.wav");
+        } else {
+            playSound("piece-move.wav");
+        }
         
         // Handle pawn promotion
         if (board[to.y][to.x] instanceof Pawn && (to.y == 0 || to.y == 7)) {
@@ -331,8 +361,10 @@ public class ChessBoard extends JPanel {
         // Add check or checkmate symbol
         if (isCheck()) {
             notation.append("+");
+            playSound("move-check.wav");
         } else if (isCheckmate()) {
             notation.append("#");
+            playSound("move-check.wav"); // Checkmate also implies check
         }
         
         return notation.toString();
@@ -369,10 +401,6 @@ public class ChessBoard extends JPanel {
         return true; // No legal moves found
     }
 
-    public boolean isAITurn() {
-        return isAITurn;
-    }
-
     public void makeMove(int fromRow, int fromCol, int toRow, int toCol) {
         Point from = new Point(fromCol, fromRow);
         Point to = new Point(toCol, toRow);
@@ -397,11 +425,6 @@ public class ChessBoard extends JPanel {
 
     public ChessPiece[][] getBoard() {
         return board;
-    }
-
-    public void setAITurn(boolean isAITurn) {
-        System.out.println("Setting AI turn to: " + isAITurn); // Debug log
-        this.isAITurn = isAITurn;
     }
 
     public void undoMove() {
@@ -431,104 +454,6 @@ public class ChessBoard extends JPanel {
         isWhiteTurn = state.isWhiteTurn;
         
         repaint();
-    }
-
-    // --- Robust AI Move Execution and Helpers ---
-    public void executeAIMove(String moveNotation) {
-        System.out.println("Executing AI move: " + moveNotation);
-        try {
-            Move move = parseAlgebraicNotation(moveNotation);
-            if (move != null) {
-                System.out.println("Parsed move: from (" + move.fromRow + "," + move.fromCol + 
-                                 ") to (" + move.toRow + "," + move.toCol + ")");
-                if (isLegalMove(move)) {
-                    System.out.println("Move is legal, executing...");
-                    makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                    isWhiteTurn = !isWhiteTurn;
-                    isAITurn = false;
-                    repaint();
-                } else {
-                    System.err.println("AI move is illegal: " + moveNotation);
-                    makeRandomMove();
-                }
-            } else {
-                System.err.println("Failed to parse AI move: " + moveNotation);
-                makeRandomMove();
-            }
-        } catch (Exception e) {
-            System.err.println("Exception during AI move: " + e.getMessage());
-            e.printStackTrace();
-            makeRandomMove();
-        }
-    }
-
-    private Move parseAlgebraicNotation(String moveNotation) {
-        moveNotation = moveNotation.trim();
-        
-        // Handle castling notation
-        if ("O-O".equals(moveNotation) || "0-0".equals(moveNotation)) {
-            int row = isWhiteTurn ? 7 : 0;
-            return new Move(row, 4, row, 6);
-        } else if ("O-O-O".equals(moveNotation) || "0-0-0".equals(moveNotation)) {
-            int row = isWhiteTurn ? 7 : 0;
-            return new Move(row, 4, row, 2);
-        }
-        
-        // Handle UCI format (e.g., "e2e4", "g1f3")
-        if (moveNotation.length() == 4) {
-            try {
-                int fromCol = moveNotation.charAt(0) - 'a';
-                int fromRow = 8 - (moveNotation.charAt(1) - '0');
-                int toCol = moveNotation.charAt(2) - 'a';
-                int toRow = 8 - (moveNotation.charAt(3) - '0');
-                
-                // Validate move coordinates
-                if (fromCol >= 0 && fromCol < 8 && fromRow >= 0 && fromRow < 8 &&
-                    toCol >= 0 && toCol < 8 && toRow >= 0 && toRow < 8) {
-                    return new Move(fromRow, fromCol, toRow, toCol);
-                }
-            } catch (Exception e) {
-                System.err.println("Error parsing move notation: " + moveNotation);
-            }
-        }
-        
-        System.err.println("Invalid move notation: " + moveNotation);
-        return null;
-    }
-
-    public void makeRandomMove() {
-        java.util.List<Move> allMoves = getAllLegalMoves(isWhiteTurn);
-        if (!allMoves.isEmpty()) {
-            Move randomMove = allMoves.get((int)(Math.random() * allMoves.size()));
-            makeMove(randomMove.fromRow, randomMove.fromCol, randomMove.toRow, randomMove.toCol);
-            isWhiteTurn = !isWhiteTurn;
-            repaint();
-        } else {
-            System.err.println("No legal moves available for random move!");
-        }
-    }
-
-    public java.util.List<Move> getAllLegalMoves(boolean forWhite) {
-        java.util.List<Move> moves = new java.util.ArrayList<>();
-        for (int row = 0; row < 8; row++) {
-            for (int col = 0; col < 8; col++) {
-                ChessPiece piece = board[row][col];
-                if (piece != null && piece.isWhite() == forWhite) {
-                    Set<Point> legalMoves = piece.getLegalMoves(board, row, col);
-                    for (Point move : legalMoves) {
-                        moves.add(new Move(row, col, move.y, move.x));
-                    }
-                }
-            }
-        }
-        return moves;
-    }
-
-    private boolean isLegalMove(Move move) {
-        ChessPiece piece = board[move.fromRow][move.fromCol];
-        if (piece == null || piece.isWhite() != isWhiteTurn) return false;
-        Set<Point> legalMoves = piece.getLegalMoves(board, move.fromRow, move.fromCol);
-        return legalMoves.contains(new Point(move.toCol, move.toRow));
     }
 
     private static class MoveState {
@@ -659,5 +584,21 @@ public class ChessBoard extends JPanel {
         return king instanceof King && rook instanceof Rook &&
                !((King)king).hasMoved() && !((Rook)rook).hasMoved() &&
                board[row][1] == null && board[row][2] == null && board[row][3] == null;
+    }
+
+    public java.util.List<Move> getAllLegalMoves(boolean forWhite) {
+        java.util.List<Move> moves = new java.util.ArrayList<>();
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                ChessPiece piece = board[row][col];
+                if (piece != null && piece.isWhite() == forWhite) {
+                    Set<Point> legalMoves = piece.getLegalMoves(board, row, col);
+                    for (Point move : legalMoves) {
+                        moves.add(new Move(row, col, move.y, move.x));
+                    }
+                }
+            }
+        }
+        return moves;
     }
 } 
