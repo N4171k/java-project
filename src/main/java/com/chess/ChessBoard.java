@@ -45,23 +45,6 @@ public class ChessBoard extends JPanel {
         });
     }
 
-    private void playSound(String soundFileName) {
-        try {
-            URL soundURL = getClass().getResource("/sounds/" + soundFileName.replace(".mp3", ".wav"));
-            if (soundURL == null) {
-                System.err.println("Sound file not found: /sounds/" + soundFileName.replace(".mp3", ".wav"));
-                return;
-            }
-            AudioInputStream audioStream = AudioSystem.getAudioInputStream(soundURL);
-            Clip clip = AudioSystem.getClip();
-            clip.open(audioStream);
-            clip.start();
-        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
-            System.err.println("Error playing sound: " + soundFileName + " - " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
     private void initializeBoard() {
         isWhiteTurn = true;
         legalMoves = new HashSet<>();
@@ -276,19 +259,12 @@ public class ChessBoard extends JPanel {
             board[to.y][rookCol] = null;
             if (board[to.y][newRookCol] instanceof Rook) {
                 ((Rook)board[to.y][newRookCol]).setHasMoved();
-                playSound("castle.wav");
             }
         }
         
         // Move the piece
         board[to.y][to.x] = board[from.y][from.x];
         board[from.y][from.x] = null;
-        
-        if (state.capturedPiece != null) {
-            playSound("piece-capture.wav");
-        } else {
-            playSound("piece-move.wav");
-        }
         
         // Handle pawn promotion
         if (board[to.y][to.x] instanceof Pawn && (to.y == 0 || to.y == 7)) {
@@ -357,15 +333,6 @@ public class ChessBoard extends JPanel {
         // Add destination square
         notation.append((char)('a' + to.x));
         notation.append(8 - to.y);
-        
-        // Add check or checkmate symbol
-        if (isCheck()) {
-            notation.append("+");
-            playSound("move-check.wav");
-        } else if (isCheckmate()) {
-            notation.append("#");
-            playSound("move-check.wav"); // Checkmate also implies check
-        }
         
         return notation.toString();
     }

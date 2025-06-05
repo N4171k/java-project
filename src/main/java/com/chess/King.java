@@ -149,14 +149,53 @@ public class King extends ChessPiece {
             for (int c = 0; c < 8; c++) {
                 ChessPiece piece = board[r][c];
                 if (piece != null && isOpponentPiece(piece)) {
-                    if (piece instanceof King) {
-                        // Manually check if the opponent king is adjacent
-                        if (Math.abs(r - row) <= 1 && Math.abs(c - col) <= 1) {
+                    // Directly check if the opponent piece at (r, c) attacks (row, col)
+                    if (piece instanceof Pawn) {
+                        // Pawn attack (diagonal forward)
+                        int pawnDirection = piece.isWhite() ? 1 : -1;
+                        if ((r + pawnDirection == row) && (c == col - 1 || c == col + 1)) {
                             return true;
                         }
-                    } else {
-                        Set<Point> moves = piece.getLegalMoves(board, r, c);
-                        if (moves.contains(new Point(col, row))) {
+                    } else if (piece instanceof Knight) {
+                        // Knight attack (L-shape)
+                        int[] rowOffsets = {-2, -2, -1, -1, 1, 1, 2, 2};
+                        int[] colOffsets = {-1, 1, -2, 2, -2, 2, -1, 1};
+                        for (int i = 0; i < 8; i++) {
+                            if (r + rowOffsets[i] == row && c + colOffsets[i] == col) {
+                                return true;
+                            }
+                        }
+                    } else if (piece instanceof Bishop || piece instanceof Queen) {
+                        // Bishop/Queen diagonal attack
+                        int[][] directions = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
+                        for (int[] d : directions) {
+                            int dr = d[0];
+                            int dc = d[1];
+                            for (int i = 1; i < 8; i++) {
+                                int currRow = r + dr * i;
+                                int currCol = c + dc * i;
+                                if (!isValidPosition(currRow, currCol)) break;
+                                if (currRow == row && currCol == col) return true;
+                                if (board[currRow][currCol] != null) break; // Blocked
+                            }
+                        }
+                    } else if (piece instanceof Rook || piece instanceof Queen) {
+                        // Rook/Queen straight attack
+                        int[][] directions = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+                        for (int[] d : directions) {
+                            int dr = d[0];
+                            int dc = d[1];
+                            for (int i = 1; i < 8; i++) {
+                                int currRow = r + dr * i;
+                                int currCol = c + dc * i;
+                                if (!isValidPosition(currRow, currCol)) break;
+                                if (currRow == row && currCol == col) return true;
+                                if (board[currRow][currCol] != null) break; // Blocked
+                            }
+                        }
+                    } else if (piece instanceof King) {
+                        // King attack (adjacent)
+                        if (Math.abs(r - row) <= 1 && Math.abs(c - col) <= 1 && (r != row || c != col)) {
                             return true;
                         }
                     }
